@@ -12,7 +12,8 @@ namespace FGS
         public class CustomButton
         {
             public Button button;
-            public TextMeshProUGUI label;
+            public GameObject skill1;
+            public GameObject skill2;
             public Image cooldownLayer;
             public float cooldownTime = 1f;
         }
@@ -30,8 +31,10 @@ namespace FGS
 
         private void Start()
         {
-            if (switchWeaponButton?.label != null)
-                switchWeaponButton.label.text = $"{(int)GameManager.Instance.PlayerController.CurrentWeapon}";
+            if (switchWeaponButton?.skill1 != null)
+                switchWeaponButton.skill1.SetActive(GameManager.Instance.PlayerController.CurrentWeapon == PlayerController.TypeOfWeapon.Rifle);
+            if (switchWeaponButton?.skill2 != null)
+                switchWeaponButton.skill2.SetActive(GameManager.Instance.PlayerController.CurrentWeapon == PlayerController.TypeOfWeapon.Shotgun);
 
             if (movementJoystick != null)
             {
@@ -86,7 +89,7 @@ namespace FGS
 
         private void HandleSwitchWeaponPressed()
         {
-            if (switchWeaponButton == null || switchWeaponButton.button == null || switchWeaponButton.label == null)
+            if (switchWeaponButton == null || switchWeaponButton.button == null || switchWeaponButton.skill1 == null || switchWeaponButton.skill2 == null)
             {
                 Debug.LogWarning("SwitchWeaponButton setup is incomplete.");
                 return;
@@ -94,7 +97,10 @@ namespace FGS
 
             switchWeaponButton.button.interactable = false;
             GameManager.Instance.PlayerController.SwitchWeapon();
-            switchWeaponButton.label.text = $"{(int)GameManager.Instance.PlayerController.CurrentWeapon}";
+            if (switchWeaponButton?.skill1 != null)
+                switchWeaponButton.skill1.SetActive(GameManager.Instance.PlayerController.CurrentWeapon == PlayerController.TypeOfWeapon.Rifle);
+            if (switchWeaponButton?.skill2 != null)
+                switchWeaponButton.skill2.SetActive(GameManager.Instance.PlayerController.CurrentWeapon == PlayerController.TypeOfWeapon.Shotgun);
 
             if (switchWeaponButton.cooldownLayer != null)
             {

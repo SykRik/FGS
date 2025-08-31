@@ -44,8 +44,8 @@ namespace FGS
         {
             shootableMask = LayerMask.GetMask("Shootable");
             GetComponent<Rigidbody>();
-            animator = GetComponent<Animator>();
-            agent    = GetComponent<NavMeshAgent>();
+            animator = GetComponentInChildren<Animator>();
+            agent    = GetComponentInChildren<NavMeshAgent>();
             
             if (shootingEffectObject != null)
             {
@@ -88,8 +88,8 @@ namespace FGS
             enabled = true;
             isDead        = false;
             currentHealth = startingHealth;
-            GetComponent<Animator>()?.SetTrigger("Revive");
-            GetComponent<NavMeshAgent>().enabled = true;
+            GetComponentInChildren<Animator>()?.SetTrigger("Revive");
+            GetComponentInChildren<NavMeshAgent>().enabled = true;
         }
 
     }
