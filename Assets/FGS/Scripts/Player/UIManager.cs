@@ -24,7 +24,6 @@ namespace FGS
         [SerializeField] private TextMeshProUGUI notifyPopup;
         [SerializeField] private TextMeshProUGUI gameTime;
         [SerializeField] private TextMeshProUGUI gameScore;
-        [SerializeField] private TextMeshProUGUI stageText;
         [SerializeField] private CustomButton switchWeaponButton;
 
         private IDisposable fadeDisposable;
@@ -60,7 +59,6 @@ namespace FGS
                             };
 
                             gameScore.text = $"SCORE {gm.CurrentKill}";
-                            stageText.text = $"STAGE {gm.CurrentLevel + 1}";
                         })
                     .AddTo(this);
 

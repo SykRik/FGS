@@ -1,191 +1,225 @@
 ﻿using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 
 namespace FGS
 {
-    public class EnemyManager : MonoSingleton<EnemyManager>
+    [DisallowMultipleComponent]
+    public sealed class EnemyManager : MonoSingleton<EnemyManager>
     {
-
-
-
-
-
-
-
         #region ===== Serialized Fields =====
-
+        [Header("References")]
         [SerializeField] private PlayerController player = null;
-        [SerializeField] private float spawnInterval = 1f;
         [SerializeField] private EnemyPooler pooler = null;
-        [SerializeField] private Transform spawnPointRoot;
-        [SerializeField] private List<Transform> spawnPoints;
+        [SerializeField] private Transform spawnPointRoot = null;
 
+        [Header("Settings")]
+        [SerializeField, Min(0.05f)] private float spawnInterval = 1f;
+
+        [Header("Debug (Auto-filled)")]
+        [SerializeField] private List<Transform> spawnPoints = new();
         #endregion
 
         #region ===== Runtime Fields =====
-
-        private float spawnTimer = 0f;
-        private bool isRunning = false;
-
+        private float _spawnTimer;
+        private bool _isRunning;
         #endregion
 
         #region ===== Properties =====
-
         public int TotalEnemiesKilled { get; private set; }
-
+        public bool IsRunning => _isRunning;
         #endregion
 
         #region ===== Unity Methods =====
-
+#if UNITY_EDITOR
         private void OnValidate()
         {
-#if UNITY_EDITOR
-            if (spawnPoints == null)
-            {
-                spawnPoints = new List<Transform>();
-            }
-            else
-            {
-                spawnPoints.Clear();
-            }
+            if (spawnPoints == null) spawnPoints = new List<Transform>(8);
+            else spawnPoints.Clear();
 
             if (spawnPointRoot == null)
             {
-                Debug.LogWarning($"Missing {nameof(spawnPointRoot)}");
+                LogHelper.Warn(this, $"Missing {nameof(spawnPointRoot)}");
+                return;
             }
-            else
+
+            var all = spawnPointRoot.GetComponentsInChildren<Transform>(true);
+            for (var i = 0; i < all.Length; i++)
             {
-                foreach (Transform spawnPoint in spawnPointRoot)
-                {
-                    if (spawnPoint == null)
-                        continue;
-                    spawnPoints.Add(spawnPoint);
-                }
+                var t = all[i];
+                if (t == null || t == spawnPointRoot) continue;
+                spawnPoints.Add(t);
             }
-#endif
         }
+#endif
 
         protected override void Awake()
         {
             base.Awake();
+
+            if (pooler == null) LogHelper.Error(this, $"Missing {nameof(pooler)}");
+            if (player == null) LogHelper.Error(this, $"Missing {nameof(player)}");
+            if (spawnPoints == null || spawnPoints.Count == 0) LogHelper.Warn(this, "No spawn points configured.");
         }
 
         private void Update()
         {
-            if (isRunning && player.CurrentHealth > 0f)
-            {
-                spawnTimer -= Time.deltaTime;
+            if (!_isRunning) return;
+            if (player == null || player.CurrentHealth <= 0f) return;
 
-                if (spawnTimer > 0f) 
-                    return;
-                
-                spawnTimer = spawnInterval;
+            _spawnTimer -= Time.deltaTime;
+            if (_spawnTimer > 0f) return;
 
-                SpawnEnemy();
-            }
+            _spawnTimer = spawnInterval;
+            SpawnEnemy(player.transform.position);
         }
-
         #endregion
 
         #region ===== Public Methods =====
-
-        public void Spawn(EnemyController enemyController)
-        {
-            var index = Random.Range(0, int.MaxValue) % spawnPoints.Count;
-            var point = spawnPoints[index];
-
-            enemyController.transform.SetPositionAndRotation(point.position, point.rotation);
-
-            if (enemyController.TryGetComponent(out EnemyController enemyComp))
-            {
-                enemyComp.ResetState();
-            }
-        }
-
         public void StartSpawning()
         {
-            isRunning = true;
-            spawnTimer = spawnInterval;
-            Debug.Log("[EnemyManager] Spawning started.");
+            if (_isRunning) return;
+            _isRunning = true;
+            _spawnTimer = spawnInterval;
+            LogHelper.Info(this, "Spawning started.");
         }
 
         public void StopSpawning()
         {
-            isRunning = false;
-            Debug.Log("[EnemyManager] Spawning stopped.");
+            if (!_isRunning) return;
+            _isRunning = false;
+            LogHelper.Info(this, "Spawning stopped.");
         }
 
-        public bool TryGetClosedEnemy(Vector3 position, float range, out EnemyController enemyController)
-        {
-            if (TryGetEnemyClosed(pooler, position, range, out enemyController))
-                return true;
-
-            enemyController = null;
-            return false;
-        }
-
-        public void RegisterEnemyDeath()
-        {
-            TotalEnemiesKilled++;
-        }
-
-        public void ResetKillCount()
-        {
-            TotalEnemiesKilled = 0;
-        }
+        public void RegisterEnemyDeath() => TotalEnemiesKilled++;
+        public void ResetKillCount() => TotalEnemiesKilled = 0;
 
         public void ReturnEnemyToPool(EnemyController enemy)
         {
-            if (enemy == null) return;
-
+            if (enemy == null || pooler == null) return;
             pooler.Return(enemy);
         }
 
-        public void ReturnAllAliveEnemiesToPool()
+        public void ReturnAllEnemiesToPool()
         {
-            ReturnAliveEnemiesInPool(pooler);
+            if (pooler == null) return;
+
+            pooler.ForceReset();
         }
+
+        public bool TryGetClosedEnemy(Vector3 position, float range, out EnemyController enemy)
+        {
+            enemy = null;
+
+            if (!TryGetClosedEnemy(position, out var closedEnemy))
+                return false;
+
+            if (Vector3.Distance(position, closedEnemy.transform.position) > range)
+                return false;
+
+            enemy = closedEnemy;
+            return true;
+        }
+
+
+        public bool TryGetClosedEnemy(Vector3 position, out EnemyController enemy)
+        {
+            enemy = null;
+
+            if (pooler == null || pooler.Enemies == null || pooler.Enemies.Count == 0)
+                return false;
+
+            var closedEnemy = null as EnemyController;
+            var minDistance = float.MaxValue;
+
+            foreach (var e in pooler.Enemies)
+            {
+                if (e == null) 
+                    continue;
+
+                var distance = Vector3.Distance(position, e.transform.position);
+
+                if (distance < minDistance)
+                {
+                    minDistance = distance;
+                    closedEnemy = e;
+                }
+            }
+
+            enemy = closedEnemy;
+            return enemy != null;
+        }
+
 
         #endregion
 
         #region ===== Private Methods =====
 
-        private void SpawnEnemy()
+        private void SpawnEnemy(Vector3 center, float minDistance = 10f)
         {
-            if (pooler.TryRequest(out var enemy))
+            if (spawnPoints == null || spawnPoints.Count == 0)
             {
-                Spawn(enemy);
+                LogHelper.Warn(this, "Cannot spawn: spawn points missing.");
+                return;
             }
-            else
+
+            if (pooler == null || !pooler.TryRequest(out var enemy))
             {
-                Debug.LogWarning($"[EnemyManager] Failed to get enemy from pool.");
+                LogHelper.Warn(this, "Failed to get enemy from pool.");
+                return;
             }
+
+            if (!TryGetSpawnPoint(center, minDistance, out var spawnPoint))
+            {
+                LogHelper.Warn(this, "Failed to get spawn point.");
+                return;
+            }
+
+            enemy.transform.SetPositionAndRotation(spawnPoint.position, spawnPoint.rotation);
+            enemy.ResetState();
         }
 
-        private void ReturnAliveEnemiesInPool(EnemyPooler pooler)
+        private bool TryGetSpawnPoint(out Transform point)
         {
-            var queueEnemy = new Queue<EnemyController>(pooler.Enemies);
-            while (queueEnemy.Count > 0)
+            point = null;
+
+            if (spawnPoints == null || spawnPoints.Count == 0) return false;
+
+            point = spawnPoints[Random.Range(0, spawnPoints.Count)];
+            return point != null;
+        }
+
+        private bool TryGetSpawnPoint(Vector3 center, float minDistance, out Transform point)
+        {
+            point = null;
+
+            if (spawnPoints == null || spawnPoints.Count == 0) return false;
+
+            var farthest = null as Transform;
+            var maxDist = float.MinValue;
+            var chosen = null as Transform;
+
+            foreach (var sp in spawnPoints)
             {
-                var enemy = queueEnemy.Dequeue();
-                if (enemy != null && enemy.CurrentHealth > 0)
+                if (sp == null) continue;
+
+                var dist = Vector3.Distance(center, sp.position);
+
+                if (dist > minDistance)
                 {
-                    ReturnEnemyToPool(enemy);
+                    if (Random.value > 0.5f) 
+                        chosen = sp;
+                }
+
+                if (dist > maxDist)
+                {
+                    maxDist = dist;
+                    farthest = sp;
                 }
             }
+
+            point = chosen ?? farthest;
+            return point != null;
         }
-
-        private bool TryGetEnemyClosed(EnemyPooler pooler, Vector3 position, float range, out EnemyController enemyController)
-        {
-            enemyController = pooler.Enemies
-                .Where(x => x != null && x.CurrentHealth > 0 && Vector3.Distance(x.transform.position, position) < range)
-                .OrderBy(x => Vector3.Distance(x.transform.position, position))
-                .FirstOrDefault();
-
-            return enemyController != null;
-        }
-
         #endregion
     }
 }
